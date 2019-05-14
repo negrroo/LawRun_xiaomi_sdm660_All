@@ -836,7 +836,7 @@ static int fg_get_msoc_raw(struct fg_chip *chip, int *val)
 }
 
 #define FULL_CAPACITY	100
-#define FULL_SOC_RAW	255
+#define FULL_SOC_RAW	245
 #if defined(CONFIG_MACH_XIAOMI_LAVENDER) || defined(CONFIG_MACH_XIAOMI_WAYNE) || defined(CONFIG_MACH_MI)
 #define FULL_SOC_REPORT_THR 250
 #endif
