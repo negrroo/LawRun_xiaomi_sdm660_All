@@ -2817,6 +2817,11 @@ static inline int update_preferred_cluster(struct related_thread_group *grp,
 
 static inline void add_new_task_to_grp(struct task_struct *new) {}
 
+static inline int mark_reserved(int cpu)
+{
+	return 0;
+}
+
 static inline int same_freq_domain(int src_cpu, int dst_cpu)
 {
 	return 1;
