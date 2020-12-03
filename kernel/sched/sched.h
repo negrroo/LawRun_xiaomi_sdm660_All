@@ -2470,6 +2470,11 @@ enum sched_boost_policy {
 	SCHED_BOOST_ON_ALL,
 };
 
+#define NO_BOOST 0
+#define FULL_THROTTLE_BOOST 1
+#define CONSERVATIVE_BOOST 2
+#define RESTRAINED_BOOST 3
+
 #ifdef CONFIG_SCHED_WALT
 
 #define WALT_MANY_WAKEUP_DEFAULT 1000
