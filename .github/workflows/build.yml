@@ -29,7 +29,7 @@ jobs:
         sudo apt-get update
         sudo apt install -y ccache
         sudo bash -c "mkdir /{build,prebuilt} && chown $(whoami):$(whoami) /{build,prebuilt}"
-        git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $CLANG_PATH
+        git clone https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-6875598.git $CLANG_PATH
         git clone https://github.com/ElXreno/AnyKernel3.git $ANYKERNEL_PATH
         git clone --depth=1 -b $GCC_BRANCH https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git $GCC_PATH
         git clone --depth=1 -b $GCC_BRANCH https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 $GCC32_PATH
