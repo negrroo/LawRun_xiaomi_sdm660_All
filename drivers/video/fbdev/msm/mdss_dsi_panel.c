@@ -2909,7 +2909,7 @@ static int mdss_dsi_panel_timing_from_dt(struct device_node *np,
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-v-pulse-width", &tmp);
 	pt->timing.v_pulse_width = (!rc ? tmp : 2);
 
-	if  (framerate_override >= 61) {
+	if  (framerate_override >= 1) {
 	pt->timing.h_front_porch = 32;
 	pt->timing.h_back_porch = 16;
 	}
@@ -2936,7 +2936,24 @@ static int mdss_dsi_panel_timing_from_dt(struct device_node *np,
 	pt->timing.frame_rate = !rc ? tmp : DEFAULT_FRAME_RATE;
 
 	if (pt->timing.frame_rate == 60) {
-			pt->timing.frame_rate = framerate_override;
+		if (framerate_override == 9)
+			pt->timing.frame_rate = 71;
+		else if (framerate_override == 8)
+			pt->timing.frame_rate = 70;
+		else if (framerate_override == 7)
+			pt->timing.frame_rate = 69;
+		else if (framerate_override == 6)
+			pt->timing.frame_rate = 68;
+		else if (framerate_override == 5)
+			pt->timing.frame_rate = 67;
+		else if (framerate_override == 4)
+			pt->timing.frame_rate = 66;
+		else if (framerate_override == 3)
+			pt->timing.frame_rate = 65;
+		else if (framerate_override == 2)
+			pt->timing.frame_rate = 63;
+		else if (framerate_override == 1)
+			pt->timing.frame_rate = 62;
 	}
 
 	rc = of_property_read_u64(np, "qcom,mdss-dsi-panel-clockrate", &tmp64);
