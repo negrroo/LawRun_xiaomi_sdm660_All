@@ -53,6 +53,8 @@ extern bool synaptics_gesture_func_on;
 static unsigned int framerate_override;
 module_param(framerate_override, uint, 0444);
 
+static unsigned int cur_refresh_rate = 60;
+
 bool ESD_TE_status = false;
 #endif
 
@@ -2956,6 +2958,8 @@ static int mdss_dsi_panel_timing_from_dt(struct device_node *np,
 			pt->timing.frame_rate = 62;
 	}
 
+cur_refresh_rate = pt->timing.frame_rate;
+
 	rc = of_property_read_u64(np, "qcom,mdss-dsi-panel-clockrate", &tmp64);
 	if (rc == -EOVERFLOW) {
 		tmp64 = 0;
@@ -3000,6 +3004,11 @@ static int mdss_dsi_panel_timing_from_dt(struct device_node *np,
 	}
 
 	return 0;
+}
+
+unsigned int dsi_panel_get_refresh_rate(void)
+{
+	return cur_refresh_rate;
 }
 
 static int  mdss_dsi_panel_config_res_properties(struct device_node *np,
