@@ -1,0 +1,76 @@
+name: Build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    env:
+      ANYKERNEL_PATH: /prebuilt/AnyKernel
+      CLANG_PATH: /prebuilt/clang
+      GCC_PATH: /prebuilt/gcc
+      GCC32_PATH: /prebuilt/gcc32
+      GCC_BRANCH: lineage-18.0
+      IMAGEDTB_PATH: out/arch/arm64/boot/Image.gz-dtb
+
+    steps:
+
+    - name: Setup additional environment variables
+      id: setup_env
+      run: |
+        echo "##[set-output name=output_file;]$(echo Kernel-lavender-$(date +%F))"
+        echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt install -y ccache
+        sudo bash -c "mkdir /{build,prebuilt} && chown $(whoami):$(whoami) /{build,prebuilt}"
+        git clone https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-6875598.git $CLANG_PATH
+        git clone https://github.com/ElXreno/AnyKernel3.git $ANYKERNEL_PATH
+        git clone --depth=1 -b $GCC_BRANCH https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git $GCC_PATH
+        git clone --depth=1 -b $GCC_BRANCH https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 $GCC32_PATH
+    
+    - name: Restore cache
+      uses: pat-s/always-upload-cache@v2.1.3
+      with:
+        path: |
+          ~/.ccache
+        key: ${{ runner.os }}-ccache-${{ steps.setup_env.outputs.branch }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-
+
+    - name: Build
+      run: |
+        export PATH="$CLANG_PATH/bin:$GCC_PATH/bin:$GCC32_PATH/bin:$PATH"
+        make O=out ARCH=arm64 clean
+        make O=out ARCH=arm64 lavender_defconfig
+        make -j$(nproc --all) O=out \
+          ARCH=arm64 \
+          CC="ccache clang" \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-android- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+    - name: Archive
+      run: |
+        cd $ANYKERNEL_PATH
+        mv $GITHUB_WORKSPACE/$IMAGEDTB_PATH .
+        zip -r9 $GITHUB_WORKSPACE/${{ steps.setup_env.outputs.output_file }}.zip *
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        path: ${{ steps.setup_env.outputs.output_file }}.zip
+        name: ${{ steps.setup_env.outputs.output_file }}.zip
+    
+    - name: Upload binaries to release
+      if: startsWith(github.ref, 'refs/tag/v')
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ${{ steps.setup_env.outputs.output_file }}.zip
+        tag: ${{ github.ref }}
