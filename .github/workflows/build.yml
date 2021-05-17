@@ -8,6 +8,10 @@ jobs:
     env:
       ANYKERNEL_PATH: /prebuilt/AnyKernel
       CLANG_PATH: /prebuilt/clang
+      GCC_PATH: /prebuilt/gcc
+      GCC32_PATH: /prebuilt/gcc32
+      GCC_BRANCH: lineage-18.1
+      CLANG_BRANCH: '11.0'
       IMAGEDTB_PATH: out/arch/arm64/boot/Image.gz-dtb
 
     steps:
@@ -26,8 +30,10 @@ jobs:
         sudo apt-get update
         sudo apt install -y ccache
         sudo bash -c "mkdir /{build,prebuilt} && chown $(whoami):$(whoami) /{build,prebuilt}"
-        git clone --depth=1 --single-branch https://github.com/kdrag0n/proton-clang $CLANG_PATH
+        git clone --depth=1 -b $CLANG_BRANCH https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-7095922.git $CLANG_PATH
         git clone --depth=1 https://github.com/sfierxyz/AnyKernel3 $ANYKERNEL_PATH
+        git clone --depth=1 -b $GCC_BRANCH https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git $GCC_PATH
+        git clone --depth=1 -b $GCC_BRANCH https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 $GCC32_PATH
     
     - name: Restore cache
       uses: pat-s/always-upload-cache@v2.1.3
@@ -40,16 +46,16 @@ jobs:
 
     - name: Build
       run: |
-        export PATH="$CLANG_PATH/bin:$PATH"
+        export PATH="$CLANG_PATH/bin:$GCC_PATH/bin:$GCC32_PATH/bin:$PATH"
         export LD_LIBRARY_PATH="$CLANG_PATH/lib64:$LD_LIBRARY_PATH"
         make O=out ARCH=arm64 clean
         make O=out ARCH=arm64 lavender_defconfig
-        make -j$(nproc --all) ARCH=arm64 O=out CC="ccache clang" \
-        CROSS_COMPILE=aarch64-linux-gnu- \
-        CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-        AR=llvm-ar NM=llvm-nm \
-        OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump\
-        STRIP=llvm-strip
+        make -j$(nproc --all) O=out \
+          ARCH=arm64 \
+          CC="ccache clang" \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-android- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
     - name: Archive
       run: |
