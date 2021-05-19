@@ -69,7 +69,7 @@
 #include <asm/div64.h>
 #include "internal.h"
 
-#ifndef CONFIG_DEBUG_KERNEL
+#ifndef CONFIG_KERNEL_DEBUG
 inline void dump_page(struct page *page, const char *reason) {}
 EXPORT_SYMBOL(dump_page);
 #endif
