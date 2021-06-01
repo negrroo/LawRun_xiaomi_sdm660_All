@@ -2,6 +2,19 @@
 config SND_SOC_SDM660_CDC
 	tristate "MSM Internal PMIC based codec"
 
+config SND_SOC_DBMDX
+	bool "DSPG Voice Trigger/Enhancement Chip"
+	default n
+	help
+		DSPG Voice Trigger/Enhancement Chip
+
+config SND_SOC_DBMDX_SND_CAPTURE
+	bool "DSPG Capture Device Support"
+	depends on SND_SOC_DBMDX
+	default n
+	help
+		DSPG Capture Device Support
+
 config SND_SOC_TAS2557
 	tristate "Texas Instruments TAS2557 SmartAmp(R)"
 
@@ -15,3 +28,6 @@ config TAS2557_CODEC
 config TAS2557_MISC
 	bool "Misc Driver support"
 endif # SND_SOC_TAS2557
+
+config SOUND_CONTROL
+	bool "Sound Control for msm89xx"
