@@ -22,7 +22,9 @@ static char proc_command_line[COMMAND_LINE_SIZE];
 
 static void proc_command_line_init(void) {
 	char *offset_addr;
+#ifdef CONFIG_PROC_CMDLINE_APPEND_ANDROID_FORCE_NORMAL_BOOT
 	char *proc_command_line_tail;
+#endif
 
 	strcpy(proc_command_line, saved_command_line);
 
