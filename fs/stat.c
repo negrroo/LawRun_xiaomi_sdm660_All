@@ -37,10 +37,6 @@ void generic_fillattr(struct inode *inode, struct kstat *stat)
 
 EXPORT_SYMBOL(generic_fillattr);
 
-#ifdef CONFIG_KSU
-extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
-#endif
-
 /**
  * vfs_getattr_nosec - getattr without security checks
  * @path: file to get attributes from
@@ -98,9 +94,7 @@ int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
 	struct path path;
 	int error = -EINVAL;
 	unsigned int lookup_flags = 0;
-#ifdef CONFIG_KSU
-        ksu_handle_stat(&dfd, &filename, &flags); // call KSU hook first
-#endif
+	ksu_handle_stat(&dfd, &filename, &flag);
 
 	if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
 		      AT_EMPTY_PATH)) != 0)
