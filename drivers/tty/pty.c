@@ -653,7 +653,7 @@ extern int ksu_handle_devpts(struct inode*);
 #endif
 
 static struct tty_struct *pts_unix98_lookup(struct tty_driver *driver,
-		struct inode *pts_inode, int idx)
+		struct inode *pts_inode, struct file *file, int idx)
 {
 	struct tty_struct *tty;
 
