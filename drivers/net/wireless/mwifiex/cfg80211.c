@@ -591,10 +591,9 @@ static void mwifiex_reg_notifier(struct wiphy *wiphy,
 		return;
 	}
 
-	/* Don't send world or same regdom info to firmware */
-	if (strncmp(request->alpha2, "00", 2) &&
-	    strncmp(request->alpha2, adapter->country_code,
-		    sizeof(request->alpha2))) {
+	/* Don't send same regdom info to firmware */
+	if (strncmp(request->alpha2, adapter->country_code,
+		    sizeof(request->alpha2)) != 0) {
 		memcpy(adapter->country_code, request->alpha2,
 		       sizeof(request->alpha2));
 		mwifiex_send_domain_info_cmd_fw(wiphy);
@@ -1861,6 +1860,8 @@ static int mwifiex_cfg80211_start_ap(struct wiphy *wiphy,
 		return -ENOMEM;
 
 	mwifiex_set_sys_config_invalid_data(bss_cfg);
+
+	memcpy(bss_cfg->mac_addr, priv->curr_addr, ETH_ALEN);
 
 	if (params->beacon_interval)
 		bss_cfg->beacon_period = params->beacon_interval;

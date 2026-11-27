@@ -190,7 +190,7 @@ static int persistent_ram_init_ecc(struct persistent_ram_zone *prz,
 {
 	int numerr;
 	struct persistent_ram_buffer *buffer = prz->buffer;
-	int ecc_blocks;
+	size_t ecc_blocks;
 	size_t ecc_total;
 
 	if (!ecc_info || !ecc_info->ecc_size)
@@ -288,6 +288,17 @@ void persistent_ram_save_old(struct persistent_ram_zone *prz)
 
 	if (!size)
 		return;
+
+	/*
+	 * If the existing buffer is differently sized, free it so a new
+	 * one is allocated. This can happen when persistent_ram_save_old()
+	 * is called early in boot and later for a timer-triggered
+	 * survivable crash when the crash dumps don't match in size
+	 * (which would be extremely unlikely given kmsg buffers usually
+	 * exceed prz buffer sizes).
+	 */
+	if (prz->old_log && prz->old_log_size != size)
+		persistent_ram_free_old(prz);
 
 	if (!prz->old_log) {
 		persistent_ram_ecc_old(prz);
@@ -418,8 +429,19 @@ static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 		phys_addr_t addr = page_start + i * PAGE_SIZE;
 		pages[i] = pfn_to_page(addr >> PAGE_SHIFT);
 	}
-	vaddr = vmap(pages, page_count, VM_MAP, prot);
+	/*
+	 * VM_IOREMAP used here to bypass this region during vread()
+	 * and kmap_atomic() (i.e. kcore) to avoid __va() failures.
+	 */
+	vaddr = vmap(pages, page_count, VM_MAP | VM_IOREMAP, prot);
 	kfree(pages);
+
+	/*
+	 * vmap() may fail and return NULL. Do not add the offset in this
+	 * case, otherwise a NULL mapping would appear successful.
+	 */
+	if (!vaddr)
+		return NULL;
 
 	/*
 	 * Since vmap() uses page granularity, we must add the offset
@@ -444,6 +466,10 @@ static void *persistent_ram_iomap(phys_addr_t start, size_t size,
 		va = ioremap(start, size);
 	else
 		va = ioremap_wc(start, size);
+
+	/* We must release the mem region if ioremap fails. */
+	if (!va)
+		release_mem_region(start, size);
 
 	/*
 	 * Since request_mem_region() and ioremap() are byte-granularity
@@ -488,7 +514,7 @@ static int persistent_ram_post_init(struct persistent_ram_zone *prz, u32 sig,
 	sig ^= PERSISTENT_RAM_SIG;
 
 	if (prz->buffer->sig == sig) {
-		if (buffer_size(prz) == 0) {
+		if (buffer_size(prz) == 0 && buffer_start(prz) == 0) {
 			pr_debug("found existing empty buffer\n");
 			return 0;
 		}

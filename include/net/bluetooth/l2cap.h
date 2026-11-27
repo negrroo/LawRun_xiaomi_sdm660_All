@@ -33,6 +33,7 @@
 /* L2CAP defaults */
 #define L2CAP_DEFAULT_MTU		672
 #define L2CAP_DEFAULT_MIN_MTU		48
+#define L2CAP_SIG_MTU			48	/* BR/EDR signaling MTU */
 #define L2CAP_DEFAULT_FLUSH_TO		0xFFFF
 #define L2CAP_EFS_DEFAULT_FLUSH_TO	0xFFFFFFFF
 #define L2CAP_DEFAULT_TX_WINDOW		63
@@ -251,6 +252,12 @@ struct l2cap_conn_rsp {
 #define L2CAP_PSM_RFCOMM	0x0003
 #define L2CAP_PSM_3DSP		0x0021
 #define L2CAP_PSM_IPSP		0x0023 /* 6LoWPAN */
+
+#define L2CAP_PSM_DYN_START	0x1001
+#define L2CAP_PSM_DYN_END	0xffff
+#define L2CAP_PSM_AUTO_END	0x10ff
+#define L2CAP_PSM_LE_DYN_START  0x0080
+#define L2CAP_PSM_LE_DYN_END	0x00ff
 
 /* channel identifier */
 #define L2CAP_CID_SIGNALING	0x0001
@@ -790,6 +797,7 @@ enum {
 };
 
 void l2cap_chan_hold(struct l2cap_chan *c);
+struct l2cap_chan *l2cap_chan_hold_unless_zero(struct l2cap_chan *c);
 void l2cap_chan_put(struct l2cap_chan *c);
 
 static inline void l2cap_chan_lock(struct l2cap_chan *chan)

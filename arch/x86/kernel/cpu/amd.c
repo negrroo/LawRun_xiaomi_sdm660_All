@@ -28,6 +28,74 @@
  */
 static u32 nodes_per_socket = 1;
 
+/*
+ * AMD errata checking
+ *
+ * Errata are defined as arrays of ints using the AMD_LEGACY_ERRATUM() or
+ * AMD_OSVW_ERRATUM() macros. The latter is intended for newer errata that
+ * have an OSVW id assigned, which it takes as first argument. Both take a
+ * variable number of family-specific model-stepping ranges created by
+ * AMD_MODEL_RANGE().
+ *
+ * Example:
+ *
+ * const int amd_erratum_319[] =
+ *	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x10, 0x2, 0x1, 0x4, 0x2),
+ *			   AMD_MODEL_RANGE(0x10, 0x8, 0x0, 0x8, 0x0),
+ *			   AMD_MODEL_RANGE(0x10, 0x9, 0x0, 0x9, 0x0));
+ */
+
+#define AMD_LEGACY_ERRATUM(...)		{ -1, __VA_ARGS__, 0 }
+#define AMD_OSVW_ERRATUM(osvw_id, ...)	{ osvw_id, __VA_ARGS__, 0 }
+#define AMD_MODEL_RANGE(f, m_start, s_start, m_end, s_end) \
+	((f << 24) | (m_start << 16) | (s_start << 12) | (m_end << 4) | (s_end))
+#define AMD_MODEL_RANGE_FAMILY(range)	(((range) >> 24) & 0xff)
+#define AMD_MODEL_RANGE_START(range)	(((range) >> 12) & 0xfff)
+#define AMD_MODEL_RANGE_END(range)	((range) & 0xfff)
+
+static const int amd_erratum_400[] =
+	AMD_OSVW_ERRATUM(1, AMD_MODEL_RANGE(0xf, 0x41, 0x2, 0xff, 0xf),
+			    AMD_MODEL_RANGE(0x10, 0x2, 0x1, 0xff, 0xf));
+
+static const int amd_erratum_383[] =
+	AMD_OSVW_ERRATUM(3, AMD_MODEL_RANGE(0x10, 0, 0, 0xff, 0xf));
+
+static const int amd_zenbleed[] =
+	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x17, 0x30, 0x0, 0x4f, 0xf),
+			   AMD_MODEL_RANGE(0x17, 0x60, 0x0, 0x7f, 0xf),
+			   AMD_MODEL_RANGE(0x17, 0xa0, 0x0, 0xaf, 0xf));
+
+static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum)
+{
+	int osvw_id = *erratum++;
+	u32 range;
+	u32 ms;
+
+	if (osvw_id >= 0 && osvw_id < 65536 &&
+	    cpu_has(cpu, X86_FEATURE_OSVW)) {
+		u64 osvw_len;
+
+		rdmsrl(MSR_AMD64_OSVW_ID_LENGTH, osvw_len);
+		if (osvw_id < osvw_len) {
+			u64 osvw_bits;
+
+			rdmsrl(MSR_AMD64_OSVW_STATUS + (osvw_id >> 6),
+			    osvw_bits);
+			return osvw_bits & (1ULL << (osvw_id & 0x3f));
+		}
+	}
+
+	/* OSVW unavailable or ID unknown, match family-model-stepping range */
+	ms = (cpu->x86_model << 4) | cpu->x86_stepping;
+	while ((range = *erratum++))
+		if ((cpu->x86 == AMD_MODEL_RANGE_FAMILY(range)) &&
+		    (ms >= AMD_MODEL_RANGE_START(range)) &&
+		    (ms <= AMD_MODEL_RANGE_END(range)))
+			return true;
+
+	return false;
+}
+
 static inline int rdmsrl_amd_safe(unsigned msr, unsigned long long *p)
 {
 	u32 gprs[8] = { 0 };
@@ -540,6 +608,49 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 			x86_amd_ls_cfg_ssbd_mask = 1ULL << bit;
 		}
 	}
+
+	/* Figure out Zen generations: */
+	switch (c->x86) {
+	case 0x17: {
+		switch (c->x86_model) {
+		case 0x00 ... 0x2f:
+		case 0x50 ... 0x5f:
+			setup_force_cpu_cap(X86_FEATURE_ZEN1);
+			break;
+		case 0x30 ... 0x4f:
+		case 0x60 ... 0x7f:
+		case 0x90 ... 0x91:
+		case 0xa0 ... 0xaf:
+			setup_force_cpu_cap(X86_FEATURE_ZEN2);
+			break;
+		default:
+			goto warn;
+		}
+		break;
+	}
+	case 0x19: {
+		switch (c->x86_model) {
+		case 0x00 ... 0x0f:
+		case 0x20 ... 0x5f:
+			setup_force_cpu_cap(X86_FEATURE_ZEN3);
+			break;
+		case 0x10 ... 0x1f:
+		case 0x60 ... 0xaf:
+			setup_force_cpu_cap(X86_FEATURE_ZEN4);
+			break;
+		default:
+			goto warn;
+		}
+		break;
+	}
+	default:
+		break;
+	}
+
+	return;
+
+warn:
+	WARN_ONCE(1, "Family 0x%x, model: 0x%x??\n", c->x86, c->x86_model);
 }
 
 static void early_init_amd(struct cpuinfo_x86 *c)
@@ -615,7 +726,7 @@ static void init_amd_k8(struct cpuinfo_x86 *c)
 	 * (model = 0x14) and later actually support it.
 	 * (AMD Erratum #110, docId: 25759).
 	 */
-	if (c->x86_model < 0x14 && cpu_has(c, X86_FEATURE_LAHF_LM)) {
+	if (c->x86_model < 0x14 && cpu_has(c, X86_FEATURE_LAHF_LM) && !cpu_has(c, X86_FEATURE_HYPERVISOR)) {
 		clear_cpu_cap(c, X86_FEATURE_LAHF_LM);
 		if (!rdmsrl_amd_safe(0xc001100d, &value)) {
 			value &= ~BIT_64(32);
@@ -778,9 +889,14 @@ static void init_amd_bd(struct cpuinfo_x86 *c)
 	clear_rdrand_cpuid_bit(c);
 }
 
-static void init_amd_zn(struct cpuinfo_x86 *c)
+static void init_amd_zen_common(void)
 {
-	set_cpu_cap(c, X86_FEATURE_ZEN);
+	setup_force_cpu_cap(X86_FEATURE_ZEN);
+}
+
+static void init_amd_zen1(struct cpuinfo_x86 *c)
+{
+	init_amd_zen_common();
 
 	/*
 	 * Fix erratum 1076: CPB feature bit not being set in CPUID.
@@ -788,6 +904,79 @@ static void init_amd_zn(struct cpuinfo_x86 *c)
 	 */
 	if (!cpu_has(c, X86_FEATURE_HYPERVISOR) && !cpu_has(c, X86_FEATURE_CPB))
 		set_cpu_cap(c, X86_FEATURE_CPB);
+
+	/*
+	 * Work around Erratum 1386.  The XSAVES instruction malfunctions in
+	 * certain circumstances on Zen1/2 uarch, and not all parts have had
+	 * updated microcode at the time of writing (March 2023).
+	 *
+	 * Affected parts all have no supervisor XSAVE states, meaning that
+	 * the XSAVEC instruction (which works fine) is equivalent.
+	 */
+	if (c->x86 == 0x17)
+		clear_cpu_cap(c, X86_FEATURE_XSAVES);
+
+	pr_notice_once("AMD Zen1 FPDSS bug detected, enabling mitigation.\n");
+	msr_set_bit(MSR_AMD64_FP_CFG, MSR_AMD64_FP_CFG_ZEN1_DENORM_FIX_BIT);
+}
+
+static bool cpu_has_zenbleed_microcode(void)
+{
+	u32 good_rev = 0;
+
+	switch (boot_cpu_data.x86_model) {
+	case 0x30 ... 0x3f: good_rev = 0x0830107b; break;
+	case 0x60 ... 0x67: good_rev = 0x0860010c; break;
+	case 0x68 ... 0x6f: good_rev = 0x08608107; break;
+	case 0x70 ... 0x7f: good_rev = 0x08701033; break;
+	case 0xa0 ... 0xaf: good_rev = 0x08a00009; break;
+
+	default:
+		return false;
+		break;
+	}
+
+	if (boot_cpu_data.microcode < good_rev)
+		return false;
+
+	return true;
+}
+
+static void zenbleed_check(struct cpuinfo_x86 *c)
+{
+	if (!cpu_has_amd_erratum(c, amd_zenbleed))
+		return;
+
+	if (cpu_has(c, X86_FEATURE_HYPERVISOR))
+		return;
+
+	if (!cpu_has(c, X86_FEATURE_AVX))
+		return;
+
+	if (!cpu_has_zenbleed_microcode()) {
+		pr_notice_once("Zenbleed: please update your microcode for the most optimal fix\n");
+		msr_set_bit(MSR_AMD64_DE_CFG, MSR_AMD64_DE_CFG_ZEN2_FP_BACKUP_FIX_BIT);
+	} else {
+		msr_clear_bit(MSR_AMD64_DE_CFG, MSR_AMD64_DE_CFG_ZEN2_FP_BACKUP_FIX_BIT);
+	}
+}
+
+static void init_amd_zen2(struct cpuinfo_x86 *c)
+{
+	init_amd_zen_common();
+
+	if (!cpu_has(c, X86_FEATURE_HYPERVISOR))
+		msr_set_bit(MSR_ZEN4_BP_CFG, MSR_ZEN2_BP_CFG_BUG_FIX_BIT);
+}
+
+static void init_amd_zen3(struct cpuinfo_x86 *c)
+{
+	init_amd_zen_common();
+}
+
+static void init_amd_zen4(struct cpuinfo_x86 *c)
+{
+	init_amd_zen_common();
 }
 
 static void init_amd(struct cpuinfo_x86 *c)
@@ -821,8 +1010,16 @@ static void init_amd(struct cpuinfo_x86 *c)
 	case 0x12: init_amd_ln(c); break;
 	case 0x15: init_amd_bd(c); break;
 	case 0x16: init_amd_jg(c); break;
-	case 0x17: init_amd_zn(c); break;
 	}
+
+	if (boot_cpu_has(X86_FEATURE_ZEN1))
+		init_amd_zen1(c);
+	else if (boot_cpu_has(X86_FEATURE_ZEN2))
+		init_amd_zen2(c);
+	else if (boot_cpu_has(X86_FEATURE_ZEN3))
+		init_amd_zen3(c);
+	else if (boot_cpu_has(X86_FEATURE_ZEN4))
+		init_amd_zen4(c);
 
 	/* Enable workaround for FXSAVE leak */
 	if (c->x86 >= 6)
@@ -894,6 +1091,8 @@ static void init_amd(struct cpuinfo_x86 *c)
 	/* AMD CPUs don't reset SS attributes on SYSRET, Xen does. */
 	if (!cpu_has(c, X86_FEATURE_XENPV))
 		set_cpu_bug(c, X86_BUG_SYSRET_SS_ATTRS);
+
+	zenbleed_check(c);
 }
 
 #ifdef CONFIG_X86_32
@@ -989,70 +1188,6 @@ static const struct cpu_dev amd_cpu_dev = {
 
 cpu_dev_register(amd_cpu_dev);
 
-/*
- * AMD errata checking
- *
- * Errata are defined as arrays of ints using the AMD_LEGACY_ERRATUM() or
- * AMD_OSVW_ERRATUM() macros. The latter is intended for newer errata that
- * have an OSVW id assigned, which it takes as first argument. Both take a
- * variable number of family-specific model-stepping ranges created by
- * AMD_MODEL_RANGE().
- *
- * Example:
- *
- * const int amd_erratum_319[] =
- *	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x10, 0x2, 0x1, 0x4, 0x2),
- *			   AMD_MODEL_RANGE(0x10, 0x8, 0x0, 0x8, 0x0),
- *			   AMD_MODEL_RANGE(0x10, 0x9, 0x0, 0x9, 0x0));
- */
-
-#define AMD_LEGACY_ERRATUM(...)		{ -1, __VA_ARGS__, 0 }
-#define AMD_OSVW_ERRATUM(osvw_id, ...)	{ osvw_id, __VA_ARGS__, 0 }
-#define AMD_MODEL_RANGE(f, m_start, s_start, m_end, s_end) \
-	((f << 24) | (m_start << 16) | (s_start << 12) | (m_end << 4) | (s_end))
-#define AMD_MODEL_RANGE_FAMILY(range)	(((range) >> 24) & 0xff)
-#define AMD_MODEL_RANGE_START(range)	(((range) >> 12) & 0xfff)
-#define AMD_MODEL_RANGE_END(range)	((range) & 0xfff)
-
-static const int amd_erratum_400[] =
-	AMD_OSVW_ERRATUM(1, AMD_MODEL_RANGE(0xf, 0x41, 0x2, 0xff, 0xf),
-			    AMD_MODEL_RANGE(0x10, 0x2, 0x1, 0xff, 0xf));
-
-static const int amd_erratum_383[] =
-	AMD_OSVW_ERRATUM(3, AMD_MODEL_RANGE(0x10, 0, 0, 0xff, 0xf));
-
-
-static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum)
-{
-	int osvw_id = *erratum++;
-	u32 range;
-	u32 ms;
-
-	if (osvw_id >= 0 && osvw_id < 65536 &&
-	    cpu_has(cpu, X86_FEATURE_OSVW)) {
-		u64 osvw_len;
-
-		rdmsrl(MSR_AMD64_OSVW_ID_LENGTH, osvw_len);
-		if (osvw_id < osvw_len) {
-			u64 osvw_bits;
-
-			rdmsrl(MSR_AMD64_OSVW_STATUS + (osvw_id >> 6),
-			    osvw_bits);
-			return osvw_bits & (1ULL << (osvw_id & 0x3f));
-		}
-	}
-
-	/* OSVW unavailable or ID unknown, match family-model-stepping range */
-	ms = (cpu->x86_model << 4) | cpu->x86_stepping;
-	while ((range = *erratum++))
-		if ((cpu->x86 == AMD_MODEL_RANGE_FAMILY(range)) &&
-		    (ms >= AMD_MODEL_RANGE_START(range)) &&
-		    (ms <= AMD_MODEL_RANGE_END(range)))
-			return true;
-
-	return false;
-}
-
 void set_dr_addr_mask(unsigned long mask, int dr)
 {
 	if (!boot_cpu_has(X86_FEATURE_BPEXT))
@@ -1070,4 +1205,16 @@ void set_dr_addr_mask(unsigned long mask, int dr)
 	default:
 		break;
 	}
+}
+
+static void zenbleed_check_cpu(void *unused)
+{
+	struct cpuinfo_x86 *c = &cpu_data(smp_processor_id());
+
+	zenbleed_check(c);
+}
+
+void amd_check_microcode(void)
+{
+	on_each_cpu(zenbleed_check_cpu, NULL, 1);
 }

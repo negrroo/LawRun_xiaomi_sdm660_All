@@ -592,6 +592,11 @@ sctp_disposition_t sctp_sf_do_5_1C_ack(struct net *net,
 	sctp_add_cmd_sf(commands, SCTP_CMD_PEER_INIT,
 			SCTP_PEER_INIT(initchunk));
 
+	/* SCTP-AUTH: generate the association shared keys so that
+	 * we can potentially sign the COOKIE-ECHO.
+	 */
+	sctp_add_cmd_sf(commands, SCTP_CMD_ASSOC_SHKEY, SCTP_NULL());
+
 	/* Reset init error count upon receipt of INIT-ACK.  */
 	sctp_add_cmd_sf(commands, SCTP_CMD_INIT_COUNTER_RESET, SCTP_NULL());
 
@@ -605,11 +610,6 @@ sctp_disposition_t sctp_sf_do_5_1C_ack(struct net *net,
 			SCTP_TO(SCTP_EVENT_TIMEOUT_T1_COOKIE));
 	sctp_add_cmd_sf(commands, SCTP_CMD_NEW_STATE,
 			SCTP_STATE(SCTP_STATE_COOKIE_ECHOED));
-
-	/* SCTP-AUTH: genereate the assocition shared keys so that
-	 * we can potentially signe the COOKIE-ECHO.
-	 */
-	sctp_add_cmd_sf(commands, SCTP_CMD_ASSOC_SHKEY, SCTP_NULL());
 
 	/* 5.1 C) "A" shall then send the State Cookie received in the
 	 * INIT ACK chunk in a COOKIE ECHO chunk, ...
@@ -1443,6 +1443,12 @@ static sctp_disposition_t sctp_sf_do_unexpected_init(
 
 	/* Tag the variable length parameters.  */
 	chunk->param_hdr.v = skb_pull(chunk->skb, sizeof(sctp_inithdr_t));
+
+	if (asoc->state >= SCTP_STATE_ESTABLISHED) {
+		/* Discard INIT matching peer vtag after handshake completion (stale INIT). */
+		if (ntohl(chunk->subh.init_hdr->init_tag) == asoc->peer.i.init_tag)
+			return sctp_sf_pdiscard(net, ep, asoc, type, arg, commands);
+	}
 
 	/* Verify the INIT chunk before processing it. */
 	err_chunk = NULL;
@@ -2393,11 +2399,7 @@ static sctp_disposition_t sctp_sf_do_5_2_6_stale(struct net *net,
 	 */
 	sctp_add_cmd_sf(commands, SCTP_CMD_DEL_NON_PRIMARY, SCTP_NULL());
 
-	/* If we've sent any data bundled with COOKIE-ECHO we will need to
-	 * resend
-	 */
-	sctp_add_cmd_sf(commands, SCTP_CMD_T1_RETRAN,
-			SCTP_TRANSPORT(asoc->peer.primary_path));
+	sctp_add_cmd_sf(commands, SCTP_CMD_PURGE_OUTQUEUE, SCTP_NULL());
 
 	/* Cast away the const modifier, as we want to just
 	 * rerun it through as a sideffect.
@@ -3490,7 +3492,7 @@ sctp_disposition_t sctp_sf_ootb(struct net *net,
 		}
 
 		ch = (sctp_chunkhdr_t *) ch_end;
-	} while (ch_end < skb_tail_pointer(skb));
+	} while (ch_end + sizeof(*ch) < skb_tail_pointer(skb));
 
 	if (ootb_shut_ack)
 		return sctp_sf_shut_8_4_5(net, ep, asoc, type, arg, commands);
@@ -4148,7 +4150,7 @@ sctp_disposition_t sctp_sf_eat_auth(struct net *net,
 				    SCTP_AUTH_NEWKEY, GFP_ATOMIC);
 
 		if (!ev)
-			return -ENOMEM;
+			return SCTP_DISPOSITION_NOMEM;
 
 		sctp_add_cmd_sf(commands, SCTP_CMD_EVENT_ULP,
 				SCTP_ULPEVENT(ev));

@@ -193,7 +193,7 @@
 #define X86_FEATURE_PROC_FEEDBACK ( 7*32+ 9) /* AMD ProcFeedbackInterface */
 
 #define X86_FEATURE_RETPOLINE	( 7*32+12) /* "" Generic Retpoline mitigation for Spectre variant 2 */
-#define X86_FEATURE_RETPOLINE_AMD ( 7*32+13) /* "" AMD Retpoline mitigation for Spectre variant 2 */
+#define X86_FEATURE_RETPOLINE_LFENCE	( 7*32+13) /* "" Use LFENCEs for Spectre variant 2 */
 
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
 #define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* "" Fill RSB on context switches */
@@ -212,7 +212,7 @@
 #define X86_FEATURE_IBRS	( 7*32+25) /* Indirect Branch Restricted Speculation */
 #define X86_FEATURE_IBPB	( 7*32+26) /* Indirect Branch Prediction Barrier */
 #define X86_FEATURE_STIBP	( 7*32+27) /* Single Thread Indirect Branch Predictors */
-#define X86_FEATURE_ZEN		( 7*32+28) /* "" CPU is AMD family 0x17 (Zen) */
+#define X86_FEATURE_ZEN		( 7*32+28) /* "" Generic flag for all Zen and newer */
 #define X86_FEATURE_L1TF_PTEINV	( 7*32+29) /* "" L1TF workaround PTE inversion */
 
 /* Virtualization flags: Linux defined, word 8 */

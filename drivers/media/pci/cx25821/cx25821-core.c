@@ -929,6 +929,7 @@ static int cx25821_dev_setup(struct cx25821_dev *dev)
 
 	if (!dev->lmmio) {
 		CX25821_ERR("ioremap failed, maybe increasing __VMALLOC_RESERVE in page.h\n");
+		release_mem_region(dev->base_io_addr, pci_resource_len(dev->pci, 0));
 		cx25821_iounmap(dev);
 		return -ENOMEM;
 	}
@@ -1361,11 +1362,11 @@ static void cx25821_finidev(struct pci_dev *pci_dev)
 	struct cx25821_dev *dev = get_cx25821(v4l2_dev);
 
 	cx25821_shutdown(dev);
-	pci_disable_device(pci_dev);
 
 	/* unregister stuff */
 	if (pci_dev->irq)
 		free_irq(pci_dev->irq, dev);
+	pci_disable_device(pci_dev);
 
 	cx25821_dev_unregister(dev);
 	vb2_dma_sg_cleanup_ctx(dev->alloc_ctx);

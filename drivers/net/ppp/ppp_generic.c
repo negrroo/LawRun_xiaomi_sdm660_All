@@ -71,6 +71,7 @@
 #define MPHDRLEN_SSN	4	/* ditto with short sequence numbers */
 
 #define PPP_PROTO_LEN	2
+#define PPP_LCP_HDRLEN	4
 
 /*
  * An instance of /dev/ppp can be associated with either a ppp
@@ -480,6 +481,15 @@ static ssize_t ppp_read(struct file *file, char __user *buf,
 	return ret;
 }
 
+static bool ppp_check_packet(struct sk_buff *skb, size_t count)
+{
+	/* LCP packets must include LCP header which 4 bytes long:
+	 * 1-byte code, 1-byte identifier, and 2-byte length.
+	 */
+	return get_unaligned_be16(skb->data) != PPP_LCP ||
+		count >= PPP_PROTO_LEN + PPP_LCP_HDRLEN;
+}
+
 static ssize_t ppp_write(struct file *file, const char __user *buf,
 			 size_t count, loff_t *ppos)
 {
@@ -499,6 +509,11 @@ static ssize_t ppp_write(struct file *file, const char __user *buf,
 	skb_reserve(skb, pf->hdrlen);
 	ret = -EFAULT;
 	if (copy_from_user(skb_put(skb, count), buf, count)) {
+		kfree_skb(skb);
+		goto out;
+	}
+	ret = -EINVAL;
+	if (unlikely(!ppp_check_packet(skb, count))) {
 		kfree_skb(skb);
 		goto out;
 	}
@@ -844,6 +859,9 @@ static int ppp_unattached_ioctl(struct net *net, struct ppp_file *pf,
 	struct channel *chan;
 	struct ppp_net *pn;
 	int __user *p = (int __user *)arg;
+
+	if (!ns_capable(net->user_ns, CAP_NET_ADMIN))
+		return -EPERM;
 
 	switch (cmd) {
 	case PPPIOCNEWUNIT:
@@ -1251,7 +1269,6 @@ pad_compress_skb(struct ppp *ppp, struct sk_buff *skb)
 		 */
 		if (net_ratelimit())
 			netdev_err(ppp->dev, "ppp: compressor dropped pkt\n");
-		kfree_skb(skb);
 		consume_skb(new_skb);
 		new_skb = NULL;
 	}
@@ -1270,6 +1287,8 @@ ppp_send_frame(struct ppp *ppp, struct sk_buff *skb)
 	struct sk_buff *new_skb;
 	int len;
 	unsigned char *cp;
+
+	skb->dev = ppp->dev;
 
 	if (proto < 0x8000) {
 #ifdef CONFIG_PPP_FILTER
@@ -1351,9 +1370,10 @@ ppp_send_frame(struct ppp *ppp, struct sk_buff *skb)
 					   "down - pkt dropped.\n");
 			goto drop;
 		}
-		skb = pad_compress_skb(ppp, skb);
-		if (!skb)
+		new_skb = pad_compress_skb(ppp, skb);
+		if (!new_skb)
 			goto drop;
+		skb = new_skb;
 	}
 
 	/*

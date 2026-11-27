@@ -110,6 +110,8 @@ struct cache_head *sunrpc_cache_lookup(struct cache_detail *detail,
 
 	hlist_add_head(&new->cache_list, head);
 	detail->entries++;
+	if (detail->nextcheck > new->expiry_time)
+		detail->nextcheck = new->expiry_time + 1;
 	cache_get(new);
 	write_unlock(&detail->hash_lock);
 
@@ -1621,11 +1623,13 @@ static void remove_cache_proc_entries(struct cache_detail *cd, struct net *net)
 	remove_proc_entry(cd->name, sn->proc_net_rpc);
 }
 
-#ifdef CONFIG_PROC_FS
 static int create_cache_proc_entries(struct cache_detail *cd, struct net *net)
 {
 	struct proc_dir_entry *p;
 	struct sunrpc_net *sn;
+
+	if (!IS_ENABLED(CONFIG_PROC_FS))
+		return 0;
 
 	sn = net_generic(net, sunrpc_net_id);
 	cd->u.procfs.proc_ent = proc_mkdir(cd->name, sn->proc_net_rpc);
@@ -1662,12 +1666,6 @@ out_nomem:
 	remove_cache_proc_entries(cd, net);
 	return -ENOMEM;
 }
-#else /* CONFIG_PROC_FS */
-static int create_cache_proc_entries(struct cache_detail *cd, struct net *net)
-{
-	return 0;
-}
-#endif
 
 void __init cache_initialize(void)
 {

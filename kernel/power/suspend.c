@@ -38,6 +38,8 @@
 
 const char *pm_labels[] = { "mem", "standby", "freeze", NULL };
 const char *pm_states[PM_SUSPEND_MAX];
+suspend_state_t pm_suspend_target_state;
+EXPORT_SYMBOL_GPL(pm_suspend_target_state);
 
 extern int PROC_AWAKE_ID; /* 12th bit */
 extern int slst_gpio_base_id;
@@ -434,6 +436,8 @@ int suspend_devices_and_enter(suspend_state_t state)
 	if (!sleep_state_supported(state))
 		return -ENOSYS;
 
+	pm_suspend_target_state = state;
+
 	error = platform_suspend_begin(state);
 	if (error)
 		goto Close;
@@ -467,6 +471,7 @@ int suspend_devices_and_enter(suspend_state_t state)
 
  Close:
 	platform_resume_end(state);
+	pm_suspend_target_state = PM_SUSPEND_ON;
 	return error;
 
  Recover_platform:

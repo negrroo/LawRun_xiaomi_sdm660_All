@@ -296,7 +296,7 @@ static u32 mvsd_finish_data(struct mvsd_host *host, struct mmc_data *data,
 		host->pio_ptr = NULL;
 		host->pio_size = 0;
 	} else {
-		dma_unmap_sg(mmc_dev(host->mmc), data->sg, host->sg_frags,
+		dma_unmap_sg(mmc_dev(host->mmc), data->sg, data->sg_len,
 			     (data->flags & MMC_DATA_READ) ?
 				DMA_FROM_DEVICE : DMA_TO_DEVICE);
 	}
@@ -705,9 +705,12 @@ static int mvsd_probe(struct platform_device *pdev)
 	int ret, irq;
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	irq = platform_get_irq(pdev, 0);
-	if (!r || irq < 0)
+	if (!r)
 		return -ENXIO;
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return irq;
 
 	mmc = mmc_alloc_host(sizeof(struct mvsd_host), &pdev->dev);
 	if (!mmc) {
