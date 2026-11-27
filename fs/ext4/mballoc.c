@@ -4576,8 +4576,8 @@ repeat:
 			goto errout;
 		}
 	}
-	if (likely(ac.ac_status == AC_STATUS_FOUND)) {
-		*errp = ext4_mb_mark_diskspace_used(&ac, handle, reserv_clstrs);
+	if (likely(ac->ac_status == AC_STATUS_FOUND)) {
+		*errp = ext4_mb_mark_diskspace_used(ac, handle);
 		if (*errp) {
 			ext4_discard_allocated_blocks(&ac);
 			goto errout;
@@ -4907,8 +4907,8 @@ do_more:
 		 * them with group lock_held
 		 */
 		if (test_opt(sb, DISCARD)) {
-			err = ext4_issue_discard(sb, block_group, bit, count,
-						 0);
+			err = ext4_issue_discard(sb, block_group, bit,
+						 count_clusters);
 			if (err && err != -EOPNOTSUPP)
 				ext4_msg(sb, KERN_WARNING, "discard request in"
 					 " group:%d block:%d count:%lu failed"

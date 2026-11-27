@@ -26,7 +26,7 @@ jobs:
           export PATH="/opt/clang/bin:/opt/gcc/bin:/opt/gcc32/bin:$PATH"
           export KBUILD_BUILD_USER=negrroo KBUILD_BUILD_HOST=lawrun
           make O=kout ARCH=arm64 ${{ matrix.dev }}_defconfig
-          make -j$(nproc) O=kout ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS='-w' 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
+          make -k -j$(nproc) O=kout ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS='-w' 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
           ls -la kout/arch/arm64/boot/
           cp kout/arch/arm64/boot/Image.gz-dtb Image.gz-dtb-${{ matrix.dev }}
       - uses: actions/upload-artifact@v4
