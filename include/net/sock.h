@@ -699,6 +699,11 @@ static inline void sk_add_bind_node(struct sock *sk,
 	hlist_nulls_for_each_entry_rcu(__sk, node, list, sk_nulls_node)
 #define sk_for_each_from(__sk) \
 	hlist_for_each_entry_from(__sk, sk_node)
+#define sk_nulls_for_each_entry_offset(tpos, pos, head, offset)		       \
+	for (pos = (head)->first;					       \
+	     (!is_a_nulls(pos)) &&					       \
+		({ tpos = (typeof(*tpos) *)((void *)pos - offset); 1;});       \
+	     pos = pos->next)
 #define sk_nulls_for_each_from(__sk, node) \
 	if (__sk && ({ node = &(__sk)->sk_nulls_node; 1; })) \
 		hlist_nulls_for_each_entry_from(__sk, node, sk_nulls_node)
