@@ -2031,7 +2031,9 @@ static inline bool sk_has_allocations(const struct sock *sk)
  */
 static inline bool skwq_has_sleeper(struct socket_wq *wq)
 {
-	return wq && wq_has_sleeper(&wq->wait);
+	/* paired with the barrier in sock_poll_wait */
+	smp_mb();
+	return wq && waitqueue_active(&wq->wait);
 }
 
 /**
