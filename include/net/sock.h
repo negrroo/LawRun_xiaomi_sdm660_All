@@ -58,7 +58,7 @@
 #include <linux/memcontrol.h>
 #include <linux/static_key.h>
 #include <linux/sched.h>
-#include <linux/cgroup-defs.h>
+#include <linux/wait.h>
 
 #include <linux/filter.h>
 #include <linux/rculist_nulls.h>
@@ -193,7 +193,7 @@ struct sock_common {
 	int			skc_bound_dev_if;
 	union {
 		struct hlist_node	skc_bind_node;
-		struct hlist_nulls_node skc_portaddr_node;
+		struct hlist_node	skc_portaddr_node;
 	};
 	struct proto		*skc_prot;
 	possible_net_t		skc_net;
@@ -318,8 +318,9 @@ struct cg_proto;
   *	@sk_error_report: callback to indicate errors (e.g. %MSG_ERRQUEUE)
   *	@sk_backlog_rcv: callback to process the backlog
   *	@sk_destruct: called at sock freeing time, i.e. when all refcnt == 0
-  *	@sk_reuseport_cb: reuseport group container
- */
+  *	@sk_owner: reference to the real owner of the socket that calls
+  *		   sock_lock_init_class_and_name().
+  */
 struct sock {
 	/*
 	 * Now struct inet_timewait_sock also uses sock_common, so please just
@@ -427,8 +428,12 @@ struct sock {
 	u32			sk_ack_backlog;
 	u32			sk_max_ack_backlog;
 	__u32			sk_priority;
+        __u32                   sk_mark;
+#if IS_ENABLED(CONFIG_CGROUP_NET_PRIO)
+	__u32			sk_cgrp_prioidx;
+#endif
+
 	spinlock_t		sk_peer_lock;
-	__u32			sk_mark;
 	struct pid		*sk_peer_pid;
 	const struct cred	*sk_peer_cred;
 
@@ -462,6 +467,10 @@ struct sock {
 	void                    (*sk_destruct)(struct sock *sk);
 	struct rcu_head		sk_rcu;
 	struct sock_reuseport __rcu	*sk_reuseport_cb;
+
+#if IS_ENABLED(CONFIG_PROVE_LOCKING) && IS_ENABLED(CONFIG_MODULES)
+	struct module		*sk_owner;
+#endif
 };
 
 #define __sk_user_data(sk) ((*((void __rcu **)&(sk)->sk_user_data)))
@@ -701,18 +710,18 @@ static inline void sk_add_bind_node(struct sock *sk,
 	hlist_for_each_entry_safe(__sk, tmp, list, sk_bind_node)
 
 /**
- * sk_nulls_for_each_entry_offset - iterate over a list at a given struct offset
+ * sk_for_each_entry_offset_rcu - iterate over a list at a given struct offset
  * @tpos:	the type * to use as a loop cursor.
  * @pos:	the &struct hlist_node to use as a loop cursor.
  * @head:	the head for your list.
  * @offset:	offset of hlist_node within the struct.
  *
  */
-#define sk_nulls_for_each_entry_offset(tpos, pos, head, offset)		       \
-	for (pos = (head)->first;					       \
-	     (!is_a_nulls(pos)) &&					       \
+#define sk_for_each_entry_offset_rcu(tpos, pos, head, offset)		       \
+	for (pos = rcu_dereference((head)->first);			       \
+	     pos != NULL &&						       \
 		({ tpos = (typeof(*tpos) *)((void *)pos - offset); 1;});       \
-	     pos = pos->next)
+	     pos = rcu_dereference(pos->next))
 
 static inline struct user_namespace *sk_user_ns(struct sock *sk)
 {
@@ -1028,7 +1037,7 @@ struct proto {
 	void		(*release_cb)(struct sock *sk);
 
 	/* Keeping track of sk's, looking them up, and port selection methods. */
-	void			(*hash)(struct sock *sk);
+	int			(*hash)(struct sock *sk);
 	void			(*unhash)(struct sock *sk);
 	void			(*rehash)(struct sock *sk);
 	int			(*get_port)(struct sock *sk, unsigned short snum);
@@ -1357,10 +1366,10 @@ static inline void sock_prot_inuse_add(struct net *net, struct proto *prot,
 /* With per-bucket locks this operation is not-atomic, so that
  * this version is not worse.
  */
-static inline void __sk_prot_rehash(struct sock *sk)
+static inline int __sk_prot_rehash(struct sock *sk)
 {
 	sk->sk_prot->unhash(sk);
-	sk->sk_prot->hash(sk);
+	return sk->sk_prot->hash(sk);
 }
 
 void sk_prot_clear_portaddr_nulls(struct sock *sk, int size);
@@ -1984,12 +1993,12 @@ static inline bool sk_has_allocations(const struct sock *sk)
 }
 
 /**
- * wq_has_sleeper - check if there are any waiting processes
+ * skwq_has_sleeper - check if there are any waiting processes
  * @wq: struct socket_wq
  *
  * Returns true if socket_wq has waiting processes
  *
- * The purpose of the wq_has_sleeper and sock_poll_wait is to wrap the memory
+ * The purpose of the skwq_has_sleeper and sock_poll_wait is to wrap the memory
  * barrier call. They were added due to the race found within the tcp code.
  *
  * Consider following tcp code paths:
@@ -2015,15 +2024,9 @@ static inline bool sk_has_allocations(const struct sock *sk)
  * data on the socket.
  *
  */
-static inline bool wq_has_sleeper(struct socket_wq *wq)
+static inline bool skwq_has_sleeper(struct socket_wq *wq)
 {
-	/* We need to be sure we are in sync with the
-	 * add_wait_queue modifications to the wait queue.
-	 *
-	 * This memory barrier is paired in the sock_poll_wait.
-	 */
-	smp_mb();
-	return wq && waitqueue_active(&wq->wait);
+	return wq && wq_has_sleeper(&wq->wait);
 }
 
 /**

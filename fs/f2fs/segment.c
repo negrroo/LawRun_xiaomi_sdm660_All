@@ -1837,8 +1837,7 @@ static int issue_discard_thread(void *data)
 			continue;
 		}
 
-		if (sbi->gc_mode == GC_URGENT ||
-			!f2fs_available_free_memory(sbi, DISCARD_CACHE))
+		if (sbi->gc_mode == GC_URGENT)
 			__init_discard_policy(sbi, &dpolicy, DPOLICY_FORCE, 1);
 
 		sb_start_intwrite(sbi->sb);
@@ -2329,6 +2328,15 @@ static void update_sit_entry(struct f2fs_sb_info *sbi, block_t blkaddr, int del)
 
 	if (__is_large_section(sbi))
 		get_sec_entry(sbi, segno)->valid_blocks += del;
+}
+
+void refresh_sit_entry(struct f2fs_sb_info *sbi, block_t old, block_t new)
+{
+	update_sit_entry(sbi, new, 1);
+	update_sit_entry(sbi, old, -1);
+
+	locate_dirty_segment(sbi, GET_SEGNO(sbi, old));
+	locate_dirty_segment(sbi, GET_SEGNO(sbi, new));
 }
 
 void f2fs_invalidate_blocks(struct f2fs_sb_info *sbi, block_t addr)

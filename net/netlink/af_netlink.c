@@ -735,14 +735,6 @@ static int netlink_release(struct socket *sock)
 				NETLINK_URELEASE, &n);
 	}
 
-	/* Terminate any outstanding dump */
-	if (nlk->cb_running) {
-		if (nlk->cb.done)
-			nlk->cb.done(&nlk->cb);
-		module_put(nlk->cb.module);
-		kfree_skb(nlk->cb.skb);
-	}
-
 	module_put(nlk->module);
 
 	if (netlink_is_kernel(sk)) {

@@ -3,6 +3,7 @@
 
 #include <linux/rhashtable.h>
 #include <linux/atomic.h>
+#include <linux/workqueue.h>
 #include <net/sock.h>
 
 #define NLGRPSZ(x)	(ALIGN(x, sizeof(unsigned long) * 8) / 8)

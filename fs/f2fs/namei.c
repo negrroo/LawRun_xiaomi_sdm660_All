@@ -299,7 +299,8 @@ static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 
 	f2fs_alloc_nid_done(sbi, ino);
 
-	d_instantiate_new(dentry, inode);
+	d_instantiate(dentry, inode);
+	unlock_new_inode(inode);
 
 	if (IS_DIRSYNC(dir))
 		f2fs_sync_fs(sbi->sb, 1);
@@ -603,7 +604,8 @@ static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
 	err = page_symlink(inode, disk_link.name, disk_link.len);
 
 err_out:
-	d_instantiate_new(dentry, inode);
+	d_instantiate(dentry, inode);
+	unlock_new_inode(inode);
 
 	/*
 	 * Let's flush symlink data in order to avoid broken symlink as much as
@@ -666,7 +668,8 @@ static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 
 	f2fs_alloc_nid_done(sbi, inode->i_ino);
 
-	d_instantiate_new(dentry, inode);
+	d_instantiate(dentry, inode);
+	unlock_new_inode(inode);
 
 	if (IS_DIRSYNC(dir))
 		f2fs_sync_fs(sbi->sb, 1);
@@ -719,7 +722,8 @@ static int f2fs_mknod(struct inode *dir, struct dentry *dentry,
 
 	f2fs_alloc_nid_done(sbi, inode->i_ino);
 
-	d_instantiate_new(dentry, inode);
+	d_instantiate(dentry, inode);
+	unlock_new_inode(inode);
 
 	if (IS_DIRSYNC(dir))
 		f2fs_sync_fs(sbi->sb, 1);
@@ -837,7 +841,6 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		return -EIO;
 	if (!f2fs_is_checkpoint_ready(sbi))
 		return -ENOSPC;
-
 	if (is_inode_flag_set(new_dir, FI_PROJ_INHERIT) &&
 			(!projid_eq(F2FS_I(new_dir)->i_projid,
 			F2FS_I(old_dentry->d_inode)->i_projid)))
@@ -973,7 +976,7 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	}
 
 	if (old_dir_entry) {
-		if (old_dir != new_dir && !whiteout)
+		if (old_dir != new_dir)
 			f2fs_set_link(old_inode, old_dir_entry,
 						old_dir_page, new_dir);
 		else

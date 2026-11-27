@@ -317,8 +317,8 @@ write_tag_66_packet(char *signature, u8 cipher_code,
 	 *         | File Encryption Key      | arbitrary    |
 	 *         | Checksum                 | 2 bytes      |
 	 */
-	data_len = (5 + ECRYPTFS_SIG_SIZE_HEX +
-			ecryptfs_get_key_size_to_store_key(crypt_stat));
+	data_len = (8 + ECRYPTFS_SIG_SIZE_HEX + crypt_stat->key_size);
+
 	*packet = kmalloc(data_len, GFP_KERNEL);
 	message = *packet;
 	if (!message) {

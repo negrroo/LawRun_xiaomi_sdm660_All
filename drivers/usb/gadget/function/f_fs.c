@@ -1139,7 +1139,7 @@ ffs_epfile_open(struct inode *inode, struct file *file)
 	ffs_log("exit:state %d setup_state %d flag %lu", epfile->ffs->state,
 		epfile->ffs->setup_state, epfile->ffs->flags);
 
-	return stream_open(inode, file);
+	return 0;
 }
 
 static int ffs_aio_cancel(struct kiocb *kiocb)
@@ -1151,9 +1151,6 @@ static int ffs_aio_cancel(struct kiocb *kiocb)
 
 	ENTER();
 
-	ffs_log("enter:state %d setup_state %d flag %lu", epfile->ffs->state,
-		epfile->ffs->setup_state, epfile->ffs->flags);
-
 	spin_lock_irqsave(&epfile->ffs->eps_lock, flags);
 
 	if (likely(io_data && io_data->ep && io_data->req))
@@ -1162,9 +1159,7 @@ static int ffs_aio_cancel(struct kiocb *kiocb)
 		value = -EINVAL;
 
 	spin_unlock_irqrestore(&epfile->ffs->eps_lock, flags);
-
 	ffs_log("exit: value %d", value);
-
 	return value;
 }
 
@@ -1903,10 +1898,6 @@ static void ffs_data_reset(struct ffs_data *ffs)
 	ffs->setup_state = FFS_NO_SETUP;
 	ffs->flags = 0;
 
-	ffs->ms_os_descs_ext_prop_count = 0;
-	ffs->ms_os_descs_ext_prop_name_len = 0;
-	ffs->ms_os_descs_ext_prop_data_len = 0;
-
 	ffs_log("exit: state %d setup_state %d flag %lu", ffs->state,
 		ffs->setup_state, ffs->flags);
 }
@@ -1969,6 +1960,7 @@ static void functionfs_unbind(struct ffs_data *ffs)
 		clear_bit(FFS_FL_BOUND, &ffs->flags);
 		ffs_log("state %d setup_state %d flag %lu gadget %pK\n",
 			ffs->state, ffs->setup_state, ffs->flags, ffs->gadget);
+		mutex_unlock(&ffs->mutex);
 		ffs_data_put(ffs);
 	}
 }
@@ -3591,8 +3583,7 @@ static int ffs_func_setup(struct usb_function *f,
 	spin_unlock_irqrestore(&ffs->ev.waitq.lock, flags);
 
 	ffs_log("exit");
-
-	return creq->wLength == 0 ? USB_GADGET_DELAYED_STATUS : 0;
+	return ffs->ev.setup.wLength == 0 ? USB_GADGET_DELAYED_STATUS : 0;
 }
 
 static void ffs_func_suspend(struct usb_function *f)

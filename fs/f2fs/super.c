@@ -738,24 +738,7 @@ static int parse_options(struct super_block *sb, char *options)
 			kfree(name);
 			break;
 		case Opt_fsync:
-			name = match_strdup(&args[0]);
-			if (!name)
-				return -ENOMEM;
-			if (strlen(name) == 5 &&
-					!strncmp(name, "posix", 5)) {
-				F2FS_OPTION(sbi).fsync_mode = FSYNC_MODE_POSIX;
-			} else if (strlen(name) == 6 &&
-					!strncmp(name, "strict", 6)) {
-				F2FS_OPTION(sbi).fsync_mode = FSYNC_MODE_STRICT;
-			} else if (strlen(name) == 9 &&
-					!strncmp(name, "nobarrier", 9)) {
-				F2FS_OPTION(sbi).fsync_mode =
-							FSYNC_MODE_NOBARRIER;
-			} else {
-				kfree(name);
-				return -EINVAL;
-			}
-			kfree(name);
+			f2fs_info(sbi, "changing fsync mode not supported");
 			break;
 		case Opt_test_dummy_encryption:
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
@@ -1020,24 +1003,6 @@ static void destroy_device_list(struct f2fs_sb_info *sbi)
 #endif
 	}
 	kvfree(sbi->devs);
-}
-
-static void f2fs_umount_end(struct super_block *sb, int flags)
-{
-	/*
-	 * this is called at the end of umount(2). If there is an unclosed
-	 * namespace, f2fs won't do put_super() which triggers fsck in the
-	 * next boot.
-	 */
-	if ((flags & MNT_FORCE) || atomic_read(&sb->s_active) > 1) {
-		/* to write the latest kbytes_written */
-		if (!(sb->s_flags & MS_RDONLY)) {
-			struct cp_control cpc = {
-				.reason = CP_UMOUNT,
-			};
-			f2fs_write_checkpoint(F2FS_SB(sb), &cpc);
-		}
-	}
 }
 
 static void f2fs_put_super(struct super_block *sb)
@@ -1447,7 +1412,7 @@ static void default_options(struct f2fs_sb_info *sbi)
 	F2FS_OPTION(sbi).inline_xattr_size = DEFAULT_INLINE_XATTR_ADDRS;
 	F2FS_OPTION(sbi).whint_mode = WHINT_MODE_OFF;
 	F2FS_OPTION(sbi).alloc_mode = ALLOC_MODE_DEFAULT;
-	F2FS_OPTION(sbi).fsync_mode = FSYNC_MODE_POSIX;
+	F2FS_OPTION(sbi).fsync_mode = FSYNC_MODE_NOBARRIER;
 	F2FS_OPTION(sbi).test_dummy_encryption = false;
 	F2FS_OPTION(sbi).s_resuid = make_kuid(&init_user_ns, F2FS_DEF_RESUID);
 	F2FS_OPTION(sbi).s_resgid = make_kgid(&init_user_ns, F2FS_DEF_RESGID);
@@ -2244,7 +2209,6 @@ static const struct super_operations f2fs_sops = {
 #endif
 	.evict_inode	= f2fs_evict_inode,
 	.put_super	= f2fs_put_super,
-	.umount_end	= f2fs_umount_end,
 	.sync_fs	= f2fs_sync_fs,
 	.freeze_fs	= f2fs_freeze,
 	.unfreeze_fs	= f2fs_unfreeze,
@@ -2631,6 +2595,12 @@ static int sanity_check_raw_super(struct f2fs_sb_info *sbi,
 		return -EFSCORRUPTED;
 	}
 
+	if (le32_to_cpu(raw_super->segment_count) > F2FS_MAX_SEGMENT) {
+		f2fs_info(sbi, "Invalid segment count (%u)",
+			le32_to_cpu(raw_super->segment_count));
+		return 1;
+	}
+
 	/* check CP/SIT/NAT/SSA/MAIN_AREA area boundary */
 	if (sanity_check_area_boundary(sbi, bh))
 		return -EFSCORRUPTED;
@@ -2735,9 +2705,10 @@ int f2fs_sanity_check_ckpt(struct f2fs_sb_info *sbi)
 		for (j = 0; j < NR_CURSEG_DATA_TYPE; j++) {
 			if (le32_to_cpu(ckpt->cur_node_segno[i]) ==
 				le32_to_cpu(ckpt->cur_data_segno[j])) {
-				f2fs_err(sbi, "Node segment (%u) and Data segment (%u) has the same segno: %u",
-					 i, j,
-					 le32_to_cpu(ckpt->cur_node_segno[i]));
+				f2fs_err(sbi,
+					"Node segment (%u) and Data segment (%u)"
+					" has the same segno: %u", i, j,
+					le32_to_cpu(ckpt->cur_node_segno[i]));
 				return 1;
 			}
 		}
@@ -2745,6 +2716,7 @@ int f2fs_sanity_check_ckpt(struct f2fs_sb_info *sbi)
 
 	sit_bitmap_size = le32_to_cpu(ckpt->sit_ver_bitmap_bytesize);
 	nat_bitmap_size = le32_to_cpu(ckpt->nat_ver_bitmap_bytesize);
+	log_blocks_per_seg = le32_to_cpu(raw_super->log_blocks_per_seg);
 
 	if (sit_bitmap_size != ((sit_segs / 2) << log_blocks_per_seg) / 8 ||
 		nat_bitmap_size != ((nat_segs / 2) << log_blocks_per_seg) / 8) {
@@ -3466,10 +3438,17 @@ try_onemore:
 	} else {
 		err = f2fs_recover_fsync_data(sbi, true);
 
-		if (!f2fs_readonly(sb) && err > 0) {
-			err = -EINVAL;
-			f2fs_err(sbi, "Need to recover fsync data");
-			goto free_meta;
+		if (err > 0) {
+			if (!f2fs_readonly(sb)) {
+				f2fs_err(F2FS_SB(sb),
+					"Need to recover fsync data");
+				err = -EINVAL;
+				goto free_meta;
+			} else {
+				f2fs_info(F2FS_SB(sb),
+					"drop all fsynced data");
+				err = 0;
+			}
 		}
 	}
 reset_checkpoint:

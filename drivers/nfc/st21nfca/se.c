@@ -361,6 +361,7 @@ int st21nfca_connectivity_event_received(struct nfc_hci_dev *hdev, u8 host,
 		    skb->len < transaction->aid_len + transaction->params_len + 4) {
 			devm_kfree(dev, transaction);
 			return -EPROTO;
+
 		}
 
 		memcpy(transaction->params, skb->data +
