@@ -2,7 +2,6 @@ name: Build sdm660 compile check (lavender, whyred, wayne)
 on:
   push:
     branches: [next-4.4-st79-donors]
-    paths: ['.github/workflows/build-sdm660-check.yml']
 jobs:
   kernel:
     runs-on: ubuntu-22.04
