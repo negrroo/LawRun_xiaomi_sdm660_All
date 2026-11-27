@@ -34,7 +34,8 @@ jobs:
           rsync -r $S/$Q/ .
           cp arch/arm64/configs/wayne_defconfig arch/arm64/configs/LawRun_defconfig
           sed -i "s/07\.0/${VER}/" arch/arm64/configs/LawRun_defconfig
-          grep -E 'CONFIG_LOCALVERSION=|MACH_XIAOMI_NEW_CAMERA' arch/arm64/configs/LawRun_defconfig
+          sed -i 's/^CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' arch/arm64/configs/LawRun_defconfig
+          grep -E 'CONFIG_LOCALVERSION|MACH_XIAOMI_NEW_CAMERA' arch/arm64/configs/LawRun_defconfig
           make O=kout ARCH=arm64 LawRun_defconfig
           make -j$(nproc) O=kout ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS='-w' 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
           ls -la kout/arch/arm64/boot/

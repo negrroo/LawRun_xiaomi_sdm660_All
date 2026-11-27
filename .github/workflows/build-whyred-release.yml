@@ -37,7 +37,8 @@ jobs:
           cp arch/arm64/configs/whyred_defconfig arch/arm64/configs/LawRun_defconfig
           sed -i "s/21\.4_NEWCAM/${VER}_${{ matrix.cam }}/" arch/arm64/configs/LawRun_defconfig
           if [ "${{ matrix.cam }}" = OLDCAM ]; then sed -i 's/^CONFIG_MACH_XIAOMI_NEW_CAMERA=y/# CONFIG_MACH_XIAOMI_NEW_CAMERA is not set/' arch/arm64/configs/LawRun_defconfig; fi
-          grep -E 'CONFIG_LOCALVERSION=|MACH_XIAOMI_NEW_CAMERA' arch/arm64/configs/LawRun_defconfig
+          sed -i 's/^CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' arch/arm64/configs/LawRun_defconfig
+          grep -E 'CONFIG_LOCALVERSION|MACH_XIAOMI_NEW_CAMERA' arch/arm64/configs/LawRun_defconfig
           make O=kout ARCH=arm64 LawRun_defconfig
           grep -E 'CONFIG_LOCALVERSION=|MACH_XIAOMI_NEW_CAMERA' kout/.config
           make -j$(nproc) O=kout ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS='-w' 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
@@ -86,6 +87,7 @@ jobs:
           [ "$CPU" != Sk ] && rsync -r $S/${CPU}_CPU/ . || true
           cp arch/arm64/configs/whyred_defconfig arch/arm64/configs/LawRun_defconfig
           sed -i "s/21\.4_NEWCAM/22.0_NEWCAM/" arch/arm64/configs/LawRun_defconfig
+          sed -i 's/^CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' arch/arm64/configs/LawRun_defconfig
           make O=kout ARCH=arm64 LawRun_defconfig
           make -j$(nproc) O=kout ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS='-w' dtbs 2>&1 | tee dtb.log; test ${PIPESTATUS[0]} -eq 0
           mkdir -p dtbout/${{ matrix.code }} && cp kout/arch/arm64/boot/dts/qcom/*.dtb dtbout/${{ matrix.code }}/
