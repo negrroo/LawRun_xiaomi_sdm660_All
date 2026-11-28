@@ -1,5 +1,6 @@
 name: Build sdm660 wayne release installer (Station recipe)
 on:
+  workflow_dispatch:
   push:
     branches: [next-4.4-st79-donors]
     paths: ['.github/workflows/build-wayne-release.yml']
@@ -66,7 +67,7 @@ jobs:
           mkdir pkg && cd pkg && unzip -q ../template.zip
           cp ../art/kernel-Latest/Image.gz-dtb-Latest LawRun-Kernel/kernel/Latest/Image.gz-dtb
           cp ../art/kernel-Old/Image.gz-dtb-Old LawRun-Kernel/kernel/Old/Image.gz-dtb
-          echo "v${VER} | Uv-Build | Universal | 2026-11-27" > version
+          echo "v${VER} | Uv-Build | Universal | 2026-12-01" > version
           NAME=LawRun-660-wayne-${VER}.zip
           zip -qr9 ../$NAME . -x '.git*'
           cd ..

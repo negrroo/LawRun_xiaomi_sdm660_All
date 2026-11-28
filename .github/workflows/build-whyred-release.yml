@@ -1,5 +1,6 @@
 name: Build sdm660 whyred release installers (Station recipe, NEWCAM + OLDCAM)
 on:
+  workflow_dispatch:
   push:
     branches: [next-4.4-st79-donors]
     paths: ['.github/workflows/build-whyred-release.yml']
@@ -120,7 +121,7 @@ jobs:
           cp ../art/kernel-${{ matrix.cam }}-Latest/Image.gz-${{ matrix.cam }}-Latest LawRun-Kernel/kernel/Latest/Image.gz
           cp ../art/kernel-${{ matrix.cam }}-Old/Image.gz-${{ matrix.cam }}-Old LawRun-Kernel/kernel/Old/Image.gz
           for c in ../art/dtb-*/*; do code=$(basename $c); rm -f LawRun-Kernel/kernel/Specific/$code/*.dtb; cp $c/*.dtb LawRun-Kernel/kernel/Specific/$code/; done
-          echo "v${VER} | Uv-Build | Universal | 2026-11-27" > version
+          echo "v${VER} | Uv-Build | Universal | 2026-12-01" > version
           NAME=LawRun-660-whyred-${VER}-${{ matrix.cam }}.zip
           zip -qr9 ../$NAME . -x '.git*'
           cd ..
