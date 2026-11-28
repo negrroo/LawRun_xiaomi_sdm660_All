@@ -1,0 +1,79 @@
+name: TEST build sdm660 wayne installer (perf-sdm845-port, NOT a release)
+on: workflow_dispatch
+env:
+  VER: '09.0-TEST'
+  REPO: LawRun_xiaomi_sdm660_All
+jobs:
+  kernel:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        fw: [Latest, Old]
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 1 }
+      - name: Toolchains and overlays
+        run: |
+          sudo mkdir -p /home/negrroo/Kernel && sudo chown -R $USER /home/negrroo
+          git clone -q --depth 1 https://github.com/negrroo/KernelSU-Next -b next /home/negrroo/Kernel/KernelSU
+          sudo apt-get update -q && sudo apt-get install -y -q bc bison flex libssl-dev libelf-dev ccache rsync
+          git clone -q --depth 1 -b 11.0 https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-7211189 /opt/clang
+          git clone -q --depth 1 -b lineage-18.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git /opt/gcc
+          git clone -q --depth 1 -b lineage-18.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 /opt/gcc32
+          git clone -q --depth 1 -b ci-overlays https://github.com/negrroo/${REPO} /opt/ov
+      - name: Build wayne ${{ matrix.fw }}
+        run: |
+          export PATH="/opt/clang/bin:/opt/gcc/bin:/opt/gcc32/bin:$PATH"
+          export KBUILD_BUILD_USER=negrroo KBUILD_BUILD_HOST=lawrun
+          S=/opt/ov/Specifications/Whyred
+          [ "${{ matrix.fw }}" = Latest ] && Q=Qti_Support || Q=Qti_Nope
+          rsync -r $S/$Q/ .
+          cp arch/arm64/configs/wayne_defconfig arch/arm64/configs/LawRun_defconfig
+          sed -i "s/07\.0/${VER}/" arch/arm64/configs/LawRun_defconfig
+          sed -i 's/^CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' arch/arm64/configs/LawRun_defconfig
+          grep -E 'CONFIG_LOCALVERSION|MACH_XIAOMI_NEW_CAMERA' arch/arm64/configs/LawRun_defconfig
+          make O=kout ARCH=arm64 LawRun_defconfig
+          make -j$(nproc) O=kout ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS='-w' 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
+          ls -la kout/arch/arm64/boot/
+          cp kout/arch/arm64/boot/Image.gz-dtb Image.gz-dtb-${{ matrix.fw }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kernel-${{ matrix.fw }}
+          path: |
+            Image.gz-dtb-${{ matrix.fw }}
+            build.log
+  package:
+    needs: [kernel]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: art }
+      - name: Package into his installer
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          d = json.load(urllib.request.urlopen("https://api.kde-look.org/ocs/v1/content/data/2037603?format=json"))["data"][0]
+          for i in range(1, 80):
+              if d.get("downloadname%d" % i) == "LawRun-660-wayne-08.0.zip":
+                  open("template_url.txt", "w").write(d["downloadlink%d" % i]); break
+          PY
+          curl -sL -o template.zip "$(cat template_url.txt)"
+          mkdir pkg && cd pkg && unzip -q ../template.zip
+          cp ../art/kernel-Latest/Image.gz-dtb-Latest LawRun-Kernel/kernel/Latest/Image.gz-dtb
+          cp ../art/kernel-Old/Image.gz-dtb-Old LawRun-Kernel/kernel/Old/Image.gz-dtb
+          echo "v${VER} | TEST-Build perf-sdm845-port | Universal | 2026-11-28" > version
+          NAME=TEST-LawRun-660-wayne-${VER}.zip
+          zip -qr9 ../$NAME . -x '.git*'
+          cd ..
+          unzip -Z1 template.zip | sort > a.txt; unzip -Z1 $NAME | sort > b.txt
+          echo "== file list diff template(<) vs new(>)"; diff a.txt b.txt && echo IDENTICAL_LAYOUT
+          echo "== device folders"; ls pkg/LawRun-Kernel/Check
+          ls -la $NAME; md5sum $NAME
+          mkdir out && mv $NAME out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TEST-LawRun-660-wayne-09.0
+          path: out/
+          compression-level: 0
